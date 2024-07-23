@@ -3,7 +3,7 @@ FROM wjqserver/caddy:latest
 RUN mkdir -p /data/www
 RUN mkdir -p /data/ghproxy/config
 RUN mkdir -p /data/ghproxy/log
-RUN wget -O /data/ghproxy/config/config.yaml https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy-go/main/config.yaml
+RUN wget -O /data/ghproxy/config/config.yaml https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy-go/main/config/config.yaml
 RUN wget -O /data/www/index.html https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy-go/main/pages/index.html
 RUN wget -O /data/caddy/Caddyfile https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy-go/main/Caddyfile
 RUN VERSION=$(curl -s https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy-go/main/VERSION) && \
