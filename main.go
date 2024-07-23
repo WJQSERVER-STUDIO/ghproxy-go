@@ -197,7 +197,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request, path string) {
 
 	if !matched {
 		// 读取本地 HTML 文件
-		htmlFilePath := "/root/data/caddy/pages/errors/404.html"
+		htmlFilePath := "/data/caddy/pages/errors/404.html"
 		htmlContent, err := ioutil.ReadFile(htmlFilePath)
 		if err != nil {
 			log.Printf("Error reading 404 HTML file: %v", err)

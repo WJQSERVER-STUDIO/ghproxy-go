@@ -6,7 +6,7 @@ fi
 
 /data/caddy/caddy run --config /data/caddy/config/Caddyfile > /data/ghproxy/log/caddy.log 2>&1 &
 
-/data/ghproxy/ip > /data/ipinfo/ghproxy/ip.log 2>&1 &
+/data/ghproxy/ghproxy > /data/ghproxy/log/ghproxy.log 2>&1 &
 
 while [[ true ]]; do
     sleep 1
