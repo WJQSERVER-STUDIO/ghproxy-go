@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Github链接格式化</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://font.sec.miui.com/font/css?family=MiSans:400,700:MiSans">
+    <style>
+        body {
+            background-color: #f8f9fac5;
+            font-family: 'Misans', Arial, sans-serif;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 800px;
+            text-align: center;
+            min-height: 45vh;
+        }
+
+        h1 {
+            font-weight: bold;
+            margin-bottom: 75px;
+        }
+
+        .rounded-button {
+            border-radius: 6px;
+            /* 调整圆角 */
+            transition: background-color 0.3s, transform 0.2s;
+            padding: 10px 30px;
+            background-color: #39c5bb;
+            /* 默认颜色，可调节 */
+            color: white;
+            border: none;
+            margin-bottom: 10px;
+        }
+
+        .rounded-button:hover {
+            background-color: #39c5bcda;
+            /* 按压后的颜色 */
+            transform: scale(1.05);
+        }
+
+        .code-block {
+            min-height: 40px;
+            max-height: 60px;
+            background-color: #d1d1d1;
+            border-radius: 8px;
+            padding: 20px;
+            position: relative;
+            margin-top: 5px;
+            height: auto;
+            /* 允许自动调整高度 */
+            border: 1px solid #ccc;
+            /* 可选: 添加边框 */
+            overflow: hidden;
+            /* 隐藏溢出内容 */
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            border-radius: 5px;
+        }
+
+        .tips>p:first-child::before {
+            position: sticky;
+            color: #7b7b7b;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Github下载加速</h1>
+        <div class="form-group">
+            <input type="text" class="form-control" id="githubLinkInput" placeholder="键入Github链接">
+        </div>
+        <button class="btn rounded-button" id="formatButton">转换链接</button>
+
+        <div class="code-block" id="outputBlock">
+            <button class="btn btn-secondary copy-button" id="copyButton">复制</button>
+            <pre id="formattedLinkOutput"></pre>
+        </div>
+        <div class="tips">
+            <p>GitHub链接带不带协议头均可，支持release、archive以及文件，转换后链接均可使用</a>。</p>
+            <p>release、archive将使用后端加速，文件会跳转至JsDelivr</p>
+        </div>
+    </div>
+
+    <script>
+        function formatGithubLink() {
+            var githubLinkInput = document.getElementById('githubLinkInput');
+            var currentHost = window.location.host;
+            var formattedLink = "";
+
+            if (githubLinkInput.value.startsWith("https://github.com/") || githubLinkInput.value.startsWith("http://github.com/")) {
+                formattedLink = "https://" + currentHost + "/github.com" + githubLinkInput.value.substring(githubLinkInput.value.indexOf("/", 8));
+            } else if (githubLinkInput.value.startsWith("github.com/")) {
+                formattedLink = "https://" + currentHost + "/" + githubLinkInput.value;
+            } else if (githubLinkInput.value.startsWith("https://raw.githubusercontent.com/") || githubLinkInput.value.startsWith("http://raw.githubusercontent.com/")) {
+                formattedLink = "https://" + currentHost + githubLinkInput.value.substring(githubLinkInput.value.indexOf("/", 7));
+            } else if (githubLinkInput.value.startsWith("raw.githubusercontent.com/")) {
+                formattedLink = "https://" + currentHost + "/" + githubLinkInput.value;
+            }
+
+            var formattedLinkOutput = document.getElementById('formattedLinkOutput');
+            formattedLinkOutput.textContent = formattedLink;
+        }
+
+        document.getElementById('formatButton').addEventListener('click', formatGithubLink);
+
+        document.getElementById('copyButton').addEventListener('click', function () {
+            const output = document.getElementById('formattedLinkOutput');
+            const range = document.createRange();
+            range.selectNode(output);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            alert('链接已复制到剪贴板');
+        });
+    </script>
+</body>
+
+</html>

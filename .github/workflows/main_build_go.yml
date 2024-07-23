@@ -1,0 +1,36 @@
+name: 编译主程序
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Load VERSION
+        run: echo "VERSION=$(cat VERSION)" >> $GITHUB_ENV
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.22.5
+      - name: Build
+        run: go build -o ip ./main.go
+      - name: Package
+        run: sudo tar -czvf ip.tar.gz ./ip # 将可执行文件打包为 tar.gz
+      - name: Upload to GitHub Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ip
+          path: ./ip.tar.gz
+      - name: 上传至Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ env.VERSION }}
+          artifacts: ./ip.tar.gz, ./ip
+          token: ${{ secrets.REPO_TOKEN }}
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
+        env:
+          export PATH: $PATH:/usr/local/go/bin
