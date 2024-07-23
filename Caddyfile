@@ -90,9 +90,7 @@
     import cache 0s 600s
     import error_page  
     import encode
-    route /* {
-        import rate_limit 60r/m 10000 429
-    }    
+    import rate_limit 60    
 }
 
 import /data/caddy/config.d/*
