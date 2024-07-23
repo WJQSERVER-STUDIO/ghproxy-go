@@ -75,7 +75,7 @@ func (w *responseWriterWithLimit) Write(data []byte) (int, error) {
 }
 
 func main() {
-	logFile, err := os.OpenFile("./log/run.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile("/data/ghproxy/log/run.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Printf("Log Initialization Failed: > %s", err)
 	} else {
@@ -83,7 +83,7 @@ func main() {
 		log.SetOutput(logFile)
 		log.Println("Log Initialization Complete")
 	}
-	configErr := LoadConfig("./config/config.yaml")
+	configErr := LoadConfig("/data/ghproxy/config/config.yaml")
 	if configErr != nil {
 		log.Fatalf("Error loading config: %v", configErr)
 	}
