@@ -38,10 +38,10 @@
 
 (encode) {
     encode {
-	    zstd best
-		br 5 v2
-		gzip 5
-		minimum_length 1024
+        zstd best
+        br 5 v2
+        gzip 5
+        minimum_length 1024
     }
 }
 
@@ -92,7 +92,12 @@
     import encode
     route /* {
         rate_limit {remote.ip} 60r/m 10000 429
-    }   
+    }  
+    route / {
+        root /data/www
+        file_server
+        import cache 0s 12h
+    }
 }
 
 import /data/caddy/config.d/*
