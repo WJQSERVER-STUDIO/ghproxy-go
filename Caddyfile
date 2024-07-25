@@ -98,6 +98,11 @@
         file_server
         import cache 0s 12h
     }
+    route /favicon.ico {
+        root /data/www
+        file_server
+        import cache 0s 12h
+    }
 }
 
 import /data/caddy/config.d/*
