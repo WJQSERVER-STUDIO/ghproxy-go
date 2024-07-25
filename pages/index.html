@@ -51,29 +51,6 @@
             transform: scale(1.05);
         }
 
-        .code-block {
-            min-height: 40px;
-            max-height: 60px;
-            background-color: #d1d1d1;
-            border-radius: 8px;
-            padding: 20px;
-            position: relative;
-            margin-top: 5px;
-            height: auto;
-            /* 允许自动调整高度 */
-            border: 1px solid #ccc;
-            /* 可选: 添加边框 */
-            overflow: hidden;
-            /* 隐藏溢出内容 */
-        }
-
-        .copy-button {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            border-radius: 5px;
-        }
-
         .tips>p:first-child::before {
             position: sticky;
             color: #7b7b7b;
@@ -87,6 +64,61 @@
             right: 0;
             text-align: center;
         }
+
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        pre::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 12px;
+            height: 12px;
+            background: #ff5f56;
+            border-radius: 50%;
+            box-shadow: 20px 0 0 #ffbd2e, 40px 0 0 #27c93f;
+        }
+
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.875em;
+
+        }
+
+        .code {
+            position: relative;
+            padding-right: 0px;
+            /* 为代码块添加右侧内边距 */
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: rgba(118, 119, 121, 0.7);
+            /* 半透明背景 */
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+            z-index: 1;
+            /* 确保按钮在最上层 */
+        }
+
+        pre:hover .copy-button {
+            opacity: 1;
+        }
     </style>
 </head>
 
@@ -98,8 +130,8 @@
         </div>
         <button class="btn rounded-button" id="formatButton">转换链接</button>
 
-        <div class="code-block" id="outputBlock">
-            <button class="btn btn-secondary copy-button" id="copyButton">复制</button>
+        <div class="code" id="outputBlock">
+            <button class="copy-button" id="copyButton" onclick="copyCode(this)">复制</button>
             <pre id="formattedLinkOutput"></pre>
         </div>
         <div class="tips">
@@ -122,8 +154,9 @@
                 formattedLink = "https://" + currentHost + githubLinkInput.value.substring(githubLinkInput.value.indexOf("/", 7));
             } else if (githubLinkInput.value.startsWith("raw.githubusercontent.com/")) {
                 formattedLink = "https://" + currentHost + "/" + githubLinkInput.value;
+            } else if (!githubLinkInput.value.trim()) {
+                alert('请输入有效的GitHub链接');
             }
-
             var formattedLinkOutput = document.getElementById('formattedLinkOutput');
             formattedLinkOutput.textContent = formattedLink;
         }
@@ -148,7 +181,8 @@
         Copyright &copy; 2024 WJQSERVER-STUDIO
     </p>
     <p>
-        GitHub仓库地址：<a href="https://github.com/WJQSERVER-STUDIO/ghproxy-go">https://github.com/WJQSERVER-STUDIO/ghproxy-go</a>
+        GitHub仓库地址：<a
+            href="https://github.com/WJQSERVER-STUDIO/ghproxy-go">https://github.com/WJQSERVER-STUDIO/ghproxy-go</a>
     </p>
 </footer>
 
