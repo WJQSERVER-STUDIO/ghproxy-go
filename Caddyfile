@@ -103,6 +103,9 @@
         file_server
         import cache 0s 12h
     }
+    route /api* {
+        rate_limit {remote.ip} 30r/m 10000 429
+    }
 }
 
 import /data/caddy/config.d/*

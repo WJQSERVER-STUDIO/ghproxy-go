@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -54,6 +55,13 @@ func LoadConfig(filePath string) error {
 	return yaml.Unmarshal(bytes, &config)
 }
 
+func sizeLimitHandler(w http.ResponseWriter, r *http.Request) {
+	// 返回 MaxResponseBodySize 的值
+	size := config.MaxResponseBodySize
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"MaxResponseBodySize": size})
+}
+
 func (w *responseWriterWithLimit) Write(data []byte) (int, error) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -89,6 +97,7 @@ func main() {
 	}
 	log.Printf("Config loaded: %v", config)
 	http.HandleFunc("/", handleRequest)
+	http.HandleFunc("/api/sizelimit", sizeLimitHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
