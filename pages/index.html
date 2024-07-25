@@ -4,8 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Github链接格式化</title>
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <meta name="description" content="Github文件加速">
+    <title>Github下载加速</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://font.sec.miui.com/font/css?family=MiSans:400,700:MiSans">
     <style>
         body {
@@ -16,7 +17,9 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            position: relative;
         }
 
         .container {
@@ -76,6 +79,14 @@
             color: #7b7b7b;
             margin-bottom: 5px;
         }
+
+        footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+        }
     </style>
 </head>
 
@@ -131,5 +142,14 @@
         });
     </script>
 </body>
+
+<footer>
+    <p>
+        Copyright &copy; 2024 WJQSERVER-STUDIO
+    </p>
+    <p>
+        GitHub仓库地址：<a href="https://github.com/WJQSERVER-STUDIO/ghproxy-go">https://github.com/WJQSERVER-STUDIO/ghproxy-go</a>
+    </p>
+</footer>
 
 </html>
