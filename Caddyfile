@@ -41,7 +41,7 @@
         zstd best
         br 5 v2
         gzip 5
-        minimum_length 1024
+        minimum_length 512
     }
 }
 
@@ -72,19 +72,10 @@
     }    
 }
 
-(route_nocache) {
-    route {args.0} {
-        rate_limit {remote.ip} {args.1}r/m 10000 429
-        cache {
-            stale 0s
-            ttl 0s
-        }
-    }
-}
-
 :80 {
     reverse_proxy {
         to 127.0.0.1:8080
+        import header_realip
     }
     import log ghproxy
     import cache 0s 600s
