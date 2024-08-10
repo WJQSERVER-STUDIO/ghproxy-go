@@ -17,8 +17,8 @@ import (
 )
 
 type Config struct {
-	Jsdelivr302         bool `yaml:"JSDelivr302"`
-	Jsdelivr            bool `yaml:"JSDelivr"`
+	Jsdelivr302         bool `yaml:"jsdelivr302"`
+	Jsdelivr            bool `yaml:"jsdelivr"`
 	MaxResponseBodySize int  `yaml:"maxResponseBodySize"`
 }
 
@@ -55,11 +55,9 @@ func LoadConfig(filePath string) error {
 	return yaml.Unmarshal(bytes, &config)
 }
 
-func sizeLimitHandler(w http.ResponseWriter, r *http.Request) {
-	// 返回 MaxResponseBodySize 的值
-	size := config.MaxResponseBodySize
+func api(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"MaxResponseBodySize": size})
+	json.NewEncoder(w).Encode(map[string]interface{}{"MaxResponseBodySize": config.MaxResponseBodySize, "Jsdelivr302": config.Jsdelivr302, "Jsdelivr": config.Jsdelivr})
 }
 
 func (w *responseWriterWithLimit) Write(data []byte) (int, error) {
@@ -97,7 +95,7 @@ func main() {
 	}
 	log.Printf("Config loaded: %v", config)
 	http.HandleFunc("/", handleRequest)
-	http.HandleFunc("/api/sizelimit", sizeLimitHandler)
+	http.HandleFunc("/api", api)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -179,11 +177,11 @@ func httpHandler(w http.ResponseWriter, r *http.Request, path string) {
 
 			// 构造新的 URL
 
-			if config.Jsdelivr302 == true {
+			if config.Jsdelivr302 {
 				newURL := "https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + file
 				log.Printf("newURL: %s", newURL)
 				http.Redirect(w, r, newURL, http.StatusMovedPermanently)
-			} else if config.Jsdelivr302 == false && config.Jsdelivr == true {
+			} else if !config.Jsdelivr302 && config.Jsdelivr {
 				newURL := "cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + file
 				log.Printf("newURL: %s", newURL)
 				proxyRequest(w, r, newURL)
