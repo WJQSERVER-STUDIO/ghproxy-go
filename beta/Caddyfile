@@ -97,7 +97,7 @@
     route /api* {
         rate_limit {remote.ip} 30r/m 10000 429
     }
-	route *.git {
+	route /*.git {
 		reverse_proxy {
 			to 127.0.0.1:7978
 			import header_realip
