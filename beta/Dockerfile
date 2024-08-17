@@ -11,6 +11,7 @@ RUN VERSION=$(curl -s https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy
     wget -O /data/ghproxy/ghproxy https://github.com/WJQSERVER-STUDIO/ghproxy-go/releases/download/$VERSION/ghproxy
 RUN wget -O /data/ghproxy/gitclone https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy-go/main/beta/gitclone
 RUN wget -O /usr/local/bin/init.sh https://raw.githubusercontent.com/WJQSERVER-STUDIO/ghproxy-go/main/beta/init.sh
+RUN chmod +x /data/ghproxy/gitclone
 RUN chmod +x /data/ghproxy/ghproxy
 RUN chmod +x /usr/local/bin/init.sh
 
