@@ -13,4 +13,4 @@ docker run -d -p 80:80 -v ./config:/data/ghproxy/config -v ./log:/data/ghproxy/l
 
 - [ ] Git Clone支持
 - [ ] 用戶鑒權
-- [ ] 使用API獲取配置信息(部分實現)
+- [x] 使用API獲取配置信息
