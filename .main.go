@@ -45,10 +45,6 @@ func init() {
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
-	if cfg.Auth {
-		router.Use(authMiddleware(cfg.AuthToken))
-	}
-
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "https://ghproxy0rtt.1888866.xyz/")
 	})
@@ -71,17 +67,6 @@ func main() {
 
 	if err := router.Run(fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)); err != nil {
 		log.Fatalf("Error starting server: %v", err)
-	}
-}
-
-func authMiddleware(authToken string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := c.Query("auth_token")
-		if token != authToken {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-		c.Next()
 	}
 }
 
