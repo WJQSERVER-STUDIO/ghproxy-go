@@ -14,7 +14,6 @@ import (
 
 	"GithubProxy/config"
 
-	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
 )
@@ -43,7 +42,7 @@ func init() {
 
 	// 初始化路由
 	router = gin.Default()
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
+	//router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// 定义路由
 	router.GET("/", func(c *gin.Context) {
@@ -98,13 +97,13 @@ func api(c *gin.Context) {
 	})
 }
 
-/*func authHandler(c *gin.Context) bool {
+func authHandler(c *gin.Context) bool {
 	if cfg.Auth {
 		authToken := c.Query("auth_token")
 		return authToken == cfg.AuthToken
 	}
 	return true
-}*/
+}
 
 func noRouteHandler(config *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -124,10 +123,10 @@ func noRouteHandler(config *config.Config) gin.HandlerFunc {
 			rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
 		}
 
-		/*if !authHandler(c) {
+		if !authHandler(c) {
 			c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
 			return
-		}*/
+		}
 
 		// 日志记录
 		log.Printf("Request: %s %s", c.Request.Method, rawPath)
