@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,7 @@ import (
 
 	"GithubProxy/config"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
 )
@@ -41,11 +43,14 @@ func init() {
 
 	// 初始化路由
 	router = gin.Default()
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// 定义路由
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "https://ghproxy0rtt.1888866.xyz/")
 	})
+
+	router.GET("/api", api)
 
 	// 健康检查
 	router.GET("/api/healthcheck", func(c *gin.Context) {
@@ -85,6 +90,22 @@ func setupLogger() {
 	log.Println("Log Initialization Complete")
 }
 
+func api(c *gin.Context) {
+	// 设置响应头
+	c.Writer.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(c.Writer).Encode(map[string]interface{}{
+		"MaxResponseBodySize": cfg.SizeLimit,
+	})
+}
+
+func authHandler(c *gin.Context) bool {
+	if cfg.Auth {
+		authToken := c.Query("auth_token")
+		return authToken == cfg.AuthToken
+	}
+	return true
+}
+
 func noRouteHandler(config *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rawPath := strings.TrimPrefix(c.Request.URL.RequestURI(), "/")
@@ -101,6 +122,11 @@ func noRouteHandler(config *config.Config) gin.HandlerFunc {
 
 		if exps[1].MatchString(rawPath) {
 			rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
+		}
+
+		if !authHandler(c) {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+			return
 		}
 
 		// 日志记录
