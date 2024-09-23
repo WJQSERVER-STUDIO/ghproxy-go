@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,16 +30,15 @@ const (
 	DefaultScheme = "https"
 )
 
-var whiteList = []string{} // 白名单，路径里面有包含字符的才会通过
+var whiteList = []string{}
 
 type responseWriterWithLimit struct {
-	http.ResponseWriter
+	gin.ResponseWriter
 	size         int
 	mutex        sync.Mutex
 	limitReached bool
 }
 
-// LoadConfig 从 YAML 配置文件加载配置
 func LoadConfig(filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -55,9 +54,12 @@ func LoadConfig(filePath string) error {
 	return yaml.Unmarshal(bytes, &config)
 }
 
-func api(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"MaxResponseBodySize": config.MaxResponseBodySize, "Jsdelivr302": config.Jsdelivr302, "Jsdelivr": config.Jsdelivr})
+func api(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"MaxResponseBodySize": config.MaxResponseBodySize,
+		"Jsdelivr302":         config.Jsdelivr302,
+		"Jsdelivr":            config.Jsdelivr,
+	})
 }
 
 func (w *responseWriterWithLimit) Write(data []byte) (int, error) {
@@ -70,7 +72,6 @@ func (w *responseWriterWithLimit) Write(data []byte) (int, error) {
 
 	newSize := w.size + len(data)
 	if newSize > config.MaxResponseBodySize {
-		// 超出限制，返回413状态码并关闭连接
 		w.limitReached = true
 		w.ResponseWriter.WriteHeader(http.StatusRequestEntityTooLarge)
 		return 0, nil
@@ -89,46 +90,46 @@ func main() {
 		log.SetOutput(logFile)
 		log.Println("Log Initialization Complete")
 	}
+
 	configErr := LoadConfig("/data/ghproxy/config/config.yaml")
 	if configErr != nil {
 		log.Fatalf("Error loading config: %v", configErr)
 	}
+
+	gin.SetMode(gin.ReleaseMode)
 	log.Printf("Config loaded: %v", config)
-	http.HandleFunc("/", handleRequest)
-	http.HandleFunc("/api", api)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+
+	router := gin.Default()
+	router.GET("/api", api)
+	router.NoRoute(handleRequest)
+
+	log.Fatal(router.Run(":8080"))
 }
 
-func handleRequest(w http.ResponseWriter, r *http.Request) {
+func handleRequest(c *gin.Context) {
+	wrappedWriter := &responseWriterWithLimit{ResponseWriter: c.Writer}
 
-	wrappedWriter := &responseWriterWithLimit{ResponseWriter: w}
-
-	path := r.URL.Query().Get("q")
+	path := c.Query("q")
 	if path != "" {
-		redirectURL := fmt.Sprintf("%s://%s%s%s", DefaultScheme, r.Host, Prefix, path)
-		http.Redirect(wrappedWriter, r, redirectURL, http.StatusMovedPermanently)
+		redirectURL := fmt.Sprintf("%s://%s%s%s", DefaultScheme, c.Request.Host, Prefix, path)
+		c.Redirect(http.StatusMovedPermanently, redirectURL)
 		return
 	}
 
-	path = r.URL.Path[len(Prefix):]
+	path = c.Request.URL.Path[len(Prefix):]
 	if checkURL(path) {
-		httpHandler(wrappedWriter, r, path)
+		httpHandler(c, wrappedWriter, path)
 	} else {
 		proxyURL := AssetURL + path
-		proxyRequest(wrappedWriter, r, proxyURL)
+		proxyRequest(c, wrappedWriter, proxyURL)
 	}
 
-	// 在处理完请求后，检查响应体是否超出限制，如果超出，则清空当前的响应体以释放内存
 	if wrappedWriter.limitReached {
-		// 清空当前的响应体
-		wrappedWriter.ResponseWriter = &emptyResponseWriter{}
-		log.Printf("Response body size limit reached for %s", r.URL.Path)
-		log.Printf("Request %s %s %s %s", r.Method, r.Host, r.URL.Path, r.Proto)
-		log.Printf("Clear response body for %s", r.URL.Path)
+		c.Status(http.StatusRequestEntityTooLarge)
+		log.Printf("Response body size limit reached for %s", c.Request.URL.Path)
 	}
 
-	// 关闭请求体
-	r.Body.Close()
+	c.Request.Body.Close()
 }
 
 func checkURL(u string) bool {
@@ -145,28 +146,27 @@ func checkURL(u string) bool {
 	return false
 }
 
-func httpHandler(w http.ResponseWriter, r *http.Request, path string) {
+func httpHandler(c *gin.Context, w *responseWriterWithLimit, path string) {
 	GithubPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(releases|archive)/.*$`),
-		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(blob|raw)/.*$`),
-		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(info|git-).*$`),
-		regexp.MustCompile(`^raw\.githubusercontent\.com/.*$`),
-		regexp.MustCompile(`^objects\.githubusercontent\.com/.*$`),
+		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(releases|archive)/.*`),
+		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(blob|raw)/.*`),
+		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(info|git-).*`),
+		regexp.MustCompile(`^raw\.githubusercontent\.com/.*`),
+		regexp.MustCompile(`^objects\.githubusercontent\.com/.*`),
 	}
 
 	GithubCDNPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`^raw\.githubusercontent\.com/.*$`),
-		regexp.MustCompile(`^raw\.github\.com/.*$`),
+		regexp.MustCompile(`^raw\.githubusercontent\.com/.*`),
+		regexp.MustCompile(`^raw\.github\.com/.*`),
 	}
 
 	for _, pattern := range GithubCDNPatterns {
 		if matches := pattern.FindStringSubmatch(path); matches != nil {
 			log.Printf("Path %s matched pattern %s", path, pattern.String())
 
-			// 使用路径分割替代
 			parts := strings.Split(path, "/")
 			if len(parts) < 4 {
-				http.NotFound(w, r)
+				c.String(http.StatusNotFound, "Not Found")
 				return
 			}
 
@@ -175,19 +175,17 @@ func httpHandler(w http.ResponseWriter, r *http.Request, path string) {
 			branch := parts[3]
 			file := strings.Join(parts[4:], "/")
 
-			// 构造新的 URL
-
 			if config.Jsdelivr302 {
 				newURL := "https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + file
 				log.Printf("newURL: %s", newURL)
-				http.Redirect(w, r, newURL, http.StatusMovedPermanently)
+				c.Redirect(http.StatusMovedPermanently, newURL)
 			} else if !config.Jsdelivr302 && config.Jsdelivr {
 				newURL := "cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + file
 				log.Printf("newURL: %s", newURL)
-				proxyRequest(w, r, newURL)
+				proxyRequest(c, w, newURL)
 			} else {
 				log.Printf("Path %s matched pattern %s", path, pattern.String())
-				proxyRequest(w, r, path)
+				proxyRequest(c, w, path)
 			}
 			return
 		}
@@ -197,33 +195,30 @@ func httpHandler(w http.ResponseWriter, r *http.Request, path string) {
 	for _, pattern := range GithubPatterns {
 		if pattern.MatchString(path) {
 			matched = true
-			proxyRequest(w, r, path)
+			proxyRequest(c, w, path)
 			log.Printf("Path %s matched pattern %s", path, pattern.String())
 		}
 	}
 
 	if !matched {
-		// 读取本地 HTML 文件
 		htmlFilePath := "/data/caddy/pages/errors/404.html"
 		htmlContent, err := ioutil.ReadFile(htmlFilePath)
 		if err != nil {
 			log.Printf("Error reading 404 HTML file: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			c.String(http.StatusInternalServerError, "Internal Server Error")
 			return
 		}
 
-		// 返回自定义的 HTML 页面
-		w.WriteHeader(http.StatusNotFound)
-		w.Write(htmlContent)
+		c.Data(http.StatusNotFound, "text/html", htmlContent)
 		log.Printf("Path %s not found", path)
 	}
 }
 
-func proxyRequest(w http.ResponseWriter, r *http.Request, urlStr string) {
+func proxyRequest(c *gin.Context, w *responseWriterWithLimit, urlStr string) {
 	proxyURL, err := url.Parse(urlStr)
 	if err != nil {
 		log.Printf("Error parsing proxy URL: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 
@@ -232,46 +227,42 @@ func proxyRequest(w http.ResponseWriter, r *http.Request, urlStr string) {
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest(r.Method, proxyURL.String(), r.Body)
+	req, err := http.NewRequest(c.Request.Method, proxyURL.String(), c.Request.Body)
 	if err != nil {
 		log.Printf("Creating request to %s failed: %v", proxyURL.String(), err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 
-	req.Header = r.Header
+	req.Header = c.Request.Header
 
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Sending request to %s failed: %v", proxyURL.String(), err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 	defer resp.Body.Close()
 
-	// 调用 ModifyResponse 函数修改响应头
 	err = ModifyResponse(resp)
 	if err != nil {
 		log.Printf("Error modifying response: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 
-	// 将响应头信息复制给客户端
 	for key, values := range resp.Header {
 		for _, value := range values {
-			w.Header().Add(key, value)
+			c.Writer.Header().Add(key, value)
 		}
 	}
 
-	// 复制状态码
-	w.WriteHeader(resp.StatusCode)
+	c.Writer.WriteHeader(resp.StatusCode)
 
-	// 分块读取响应体并拷贝到输出流
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
 		log.Printf("Copying response body failed: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 }
@@ -281,16 +272,4 @@ func ModifyResponse(resp *http.Response) error {
 	resp.Header.Set("access-control-allow-methods", "GET,POST,PUT,PATCH,TRACE,DELETE,HEAD,OPTIONS")
 
 	return nil
-}
-
-type emptyResponseWriter struct{}
-
-func (e *emptyResponseWriter) Write(data []byte) (int, error) {
-	return len(data), nil
-}
-
-func (e *emptyResponseWriter) WriteHeader(statusCode int) {}
-
-func (e *emptyResponseWriter) Header() http.Header {
-	return http.Header{}
 }
