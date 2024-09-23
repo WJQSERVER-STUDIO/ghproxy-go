@@ -70,35 +70,19 @@ func main() {
 	}
 }
 
-func authHandler(c *gin.Context) bool {
-	if cfg.Auth {
-		authToken := c.Query("auth_token")
-		return authToken == cfg.AuthToken
-	}
-	return true
-}
-
 func noRouteHandler(config *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rawPath := strings.TrimPrefix(c.Request.URL.RequestURI(), "/")
-		matches := checkURL(rawPath)
-		if matches == nil || len(matches) < 3 {
+		if matches := checkURL(rawPath); matches != nil {
+			rawPath = "https://" + matches[2]
+			if exps[1].MatchString(rawPath) {
+				rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
+			}
+			log.Printf("Request: %s %s", c.Request.Method, rawPath)
+			proxyRequest(c, rawPath, config)
+		} else {
 			c.String(http.StatusForbidden, "Invalid input.")
-			return
 		}
-
-		rawPath = "https://" + matches[2]
-		if exps[1].MatchString(rawPath) {
-			rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
-		}
-
-		if !authHandler(c) {
-			c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
-			return
-		}
-
-		log.Printf("Request: %s %s", c.Request.Method, rawPath)
-		proxyRequest(c, rawPath, config)
 	}
 }
 
