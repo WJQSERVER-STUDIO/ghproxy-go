@@ -3,203 +3,273 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
+	"sync"
 
-	"GithubProxy/config"
-
-	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"github.com/imroc/req/v3"
+	"gopkg.in/yaml.v3"
 )
 
-var (
-	exps = []*regexp.Regexp{
-		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:releases|archive)/.*`),
-		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:blob|raw)/.*`),
-		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:info|git-).*`),
-		regexp.MustCompile(`^(?:https?://)?raw\.github(?:usercontent|)\.com/([^/]+)/([^/]+)/.+?/.+`),
-		regexp.MustCompile(`^(?:https?://)?gist\.github\.com/([^/]+)/.+?/.+`),
-	}
+type Config struct {
+	Jsdelivr302         bool `yaml:"jsdelivr302"`
+	Jsdelivr            bool `yaml:"jsdelivr"`
+	MaxResponseBodySize int  `yaml:"maxResponseBodySize"`
+}
+
+var config Config
+
+const (
+	AssetURL      = "https://github.com/"
+	Prefix        = "/"
+	DefaultScheme = "https"
 )
 
-var (
-	router *gin.Engine
-	cfg    *config.Config
-)
+var whiteList = []string{}
 
-func init() {
-	var err error
-	cfg, err = config.LoadConfig("/data/ghproxy/config/config.yaml")
+type responseWriterWithLimit struct {
+	gin.ResponseWriter
+	size         int
+	mutex        sync.Mutex
+	limitReached bool
+}
+
+func LoadConfig(filePath string) error {
+	file, err := os.Open(filePath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		return err
 	}
-	fmt.Printf("Loaded config: %v\n", cfg)
+	defer file.Close()
 
-	gin.SetMode(gin.ReleaseMode)
-	router = gin.Default()
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return err
+	}
 
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
+	return yaml.Unmarshal(bytes, &config)
+}
 
-	router.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusMovedPermanently, "https://ghproxy0rtt.1888866.xyz/")
+func api(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"MaxResponseBodySize": config.MaxResponseBodySize,
+		"Jsdelivr302":         config.Jsdelivr302,
+		"Jsdelivr":            config.Jsdelivr,
 	})
+}
 
-	router.GET("/api/healthcheck", func(c *gin.Context) {
-		c.String(http.StatusOK, "OK")
-	})
+func (w *responseWriterWithLimit) Write(data []byte) (int, error) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
 
-	router.NoRoute(noRouteHandler(cfg))
+	if w.limitReached {
+		return 0, nil
+	}
+
+	newSize := w.size + len(data)
+	if newSize > config.MaxResponseBodySize {
+		w.limitReached = true
+		w.ResponseWriter.WriteHeader(http.StatusRequestEntityTooLarge)
+		return 0, nil
+	}
+
+	w.size = newSize
+	return w.ResponseWriter.Write(data)
 }
 
 func main() {
-	logFile, err := os.OpenFile(cfg.LogFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile("/data/ghproxy/log/run.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
+		log.Printf("Log Initialization Failed: > %s", err)
+	} else {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+		log.Println("Log Initialization Complete")
 	}
-	defer logFile.Close()
-	log.SetOutput(logFile)
-	log.Println("Log Initialization Complete")
 
-	if err := router.Run(fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)); err != nil {
-		log.Fatalf("Error starting server: %v", err)
+	configErr := LoadConfig("/data/ghproxy/config/config.yaml")
+	if configErr != nil {
+		log.Fatalf("Error loading config: %v", configErr)
 	}
+
+	gin.SetMode(gin.ReleaseMode)
+	log.Printf("Config loaded: %v", config)
+
+	router := gin.Default()
+	router.GET("/api", api)
+	router.NoRoute(handleRequest)
+
+	log.Fatal(router.Run(":8080"))
 }
 
-func noRouteHandler(config *config.Config) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		rawPath := strings.TrimPrefix(c.Request.URL.RequestURI(), "/")
-		if matches := checkURL(rawPath); matches != nil {
-			rawPath = "https://" + matches[2]
-			if exps[1].MatchString(rawPath) {
-				rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
-			}
-			log.Printf("Request: %s %s", c.Request.Method, rawPath)
-			proxyRequest(c, rawPath, config)
-		} else {
-			c.String(http.StatusForbidden, "Invalid input.")
+func handleRequest(c *gin.Context) {
+	wrappedWriter := &responseWriterWithLimit{ResponseWriter: c.Writer}
+
+	path := c.Query("q")
+	if path != "" {
+		redirectURL := fmt.Sprintf("%s://%s%s%s", DefaultScheme, c.Request.Host, Prefix, path)
+		c.Redirect(http.StatusMovedPermanently, redirectURL)
+		return
+	}
+
+	path = c.Request.URL.Path[len(Prefix):]
+	if checkURL(path) {
+		httpHandler(c, wrappedWriter, path)
+	} else {
+		proxyURL := AssetURL + path
+		proxyRequest(c, wrappedWriter, proxyURL)
+	}
+
+	if wrappedWriter.limitReached {
+		c.Status(http.StatusRequestEntityTooLarge)
+		log.Printf("Response body size limit reached for %s", c.Request.URL.Path)
+	}
+
+	c.Request.Body.Close()
+}
+
+func checkURL(u string) bool {
+	if len(whiteList) == 0 {
+		return true
+	}
+
+	for _, pattern := range whiteList {
+		if strings.Contains(u, pattern) {
+			return true
 		}
 	}
+
+	return false
 }
 
-func proxyRequest(c *gin.Context, rawPath string, config *config.Config) {
-	for i, exp := range exps {
-		if exp.MatchString(rawPath) {
-			switch i {
-			case 0, 1, 3, 4:
-				log.Printf("%s Matched EXPS[%d] - USE proxy-chrome", rawPath, i)
-				proxyChrome(c, rawPath, config)
-			case 2:
-				log.Printf("%s Matched EXPS[2] - USE proxy-git", rawPath)
-				proxyGit(c, rawPath, config)
+func httpHandler(c *gin.Context, w *responseWriterWithLimit, path string) {
+	GithubPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(releases|archive)/.*`),
+		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(blob|raw)/.*`),
+		regexp.MustCompile(`^github\.com/[^/]+/[^/]+/(info|git-).*`),
+		regexp.MustCompile(`^raw\.githubusercontent\.com/.*`),
+		regexp.MustCompile(`^objects\.githubusercontent\.com/.*`),
+	}
+
+	GithubCDNPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`^raw\.githubusercontent\.com/.*`),
+		regexp.MustCompile(`^raw\.github\.com/.*`),
+	}
+
+	for _, pattern := range GithubCDNPatterns {
+		if matches := pattern.FindStringSubmatch(path); matches != nil {
+			log.Printf("Path %s matched pattern %s", path, pattern.String())
+
+			parts := strings.Split(path, "/")
+			if len(parts) < 4 {
+				c.String(http.StatusNotFound, "Not Found")
+				return
+			}
+
+			owner := parts[1]
+			repo := parts[2]
+			branch := parts[3]
+			file := strings.Join(parts[4:], "/")
+
+			if config.Jsdelivr302 {
+				newURL := "https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + file
+				log.Printf("newURL: %s", newURL)
+				c.Redirect(http.StatusMovedPermanently, newURL)
+			} else if !config.Jsdelivr302 && config.Jsdelivr {
+				newURL := "cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + file
+				log.Printf("newURL: %s", newURL)
+				proxyRequest(c, w, newURL)
+			} else {
+				log.Printf("Path %s matched pattern %s", path, pattern.String())
+				proxyRequest(c, w, path)
 			}
 			return
 		}
 	}
-	c.String(http.StatusForbidden, "Invalid input.")
+
+	matched := false
+	for _, pattern := range GithubPatterns {
+		if pattern.MatchString(path) {
+			matched = true
+			proxyRequest(c, w, path)
+			log.Printf("Path %s matched pattern %s", path, pattern.String())
+		}
+	}
+
+	if !matched {
+		htmlFilePath := "/data/caddy/pages/errors/404.html"
+		htmlContent, err := ioutil.ReadFile(htmlFilePath)
+		if err != nil {
+			log.Printf("Error reading 404 HTML file: %v", err)
+			c.String(http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+
+		c.Data(http.StatusNotFound, "text/html", htmlContent)
+		log.Printf("Path %s not found", path)
+	}
 }
 
-func proxyGit(c *gin.Context, u string, config *config.Config) {
-	proxyWithClient(c, u, config, "git/2.33.1")
-}
-
-func proxyChrome(c *gin.Context, u string, config *config.Config) {
-	proxyWithClient(c, u, config, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
-}
-
-func proxyWithClient(c *gin.Context, u string, config *config.Config, userAgent string) {
-	client := req.C().SetUserAgent(userAgent).SetTLSFingerprintChrome()
-	method := c.Request.Method
-	log.Printf("%s Method: %s", u, method)
-
-	body, err := io.ReadAll(c.Request.Body)
+func proxyRequest(c *gin.Context, w *responseWriterWithLimit, urlStr string) {
+	proxyURL, err := url.Parse(urlStr)
 	if err != nil {
-		logAndRespond(c, http.StatusInternalServerError, "Failed to read request body", err)
+		log.Printf("Error parsing proxy URL: %v", err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
-	defer c.Request.Body.Close()
 
-	req := client.R().SetBody(body)
-	copyHeaders(req, c.Request.Header)
+	if proxyURL.Scheme == "" {
+		proxyURL.Scheme = DefaultScheme
+	}
 
-	resp, err := sendRequest(req, method, u)
+	client := &http.Client{}
+	req, err := http.NewRequest(c.Request.Method, proxyURL.String(), c.Request.Body)
 	if err != nil {
-		logAndRespond(c, http.StatusInternalServerError, "Failed to send request", err)
+		log.Printf("Creating request to %s failed: %v", proxyURL.String(), err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	req.Header = c.Request.Header
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Sending request to %s failed: %v", proxyURL.String(), err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 	defer resp.Body.Close()
 
-	if err := handleResponseSize(resp, config, c); err != nil {
+	err = ModifyResponse(resp)
+	if err != nil {
+		log.Printf("Error modifying response: %v", err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 
-	copyHeadersToContext(c, resp.Header)
-	c.Status(resp.StatusCode)
-	if _, err := io.Copy(c.Writer, resp.Body); err != nil {
-		log.Printf("Failed to copy response body: %v", err)
-	}
-}
-
-func sendRequest(req *req.Request, method, url string) (*req.Response, error) {
-	switch method {
-	case "GET":
-		return req.Get(url)
-	case "POST":
-		return req.Post(url)
-	case "PUT":
-		return req.Put(url)
-	case "DELETE":
-		return req.Delete(url)
-	default:
-		return nil, fmt.Errorf("unsupported method: %s", method)
-	}
-}
-
-func handleResponseSize(resp *req.Response, config *config.Config, c *gin.Context) error {
-	contentLength := resp.Header.Get("Content-Length")
-	if contentLength != "" {
-		if size, err := strconv.Atoi(contentLength); err == nil && size > config.SizeLimit {
-			finalURL := resp.Request.URL.String()
-			c.Redirect(http.StatusMovedPermanently, finalURL)
-			log.Printf("Redirecting to %s due to size limit (%d bytes)", finalURL, size)
-			return fmt.Errorf("response size exceeds limit")
-		}
-	}
-	return nil
-}
-
-func checkURL(u string) []string {
-	for _, exp := range exps {
-		if matches := exp.FindStringSubmatch(u); matches != nil {
-			log.Printf("URL matched: %s, Matches: %v", u, matches[1:])
-			return matches[1:]
-		}
-	}
-	log.Printf("Invalid URL: %s", u)
-	return nil
-}
-
-func copyHeaders(req *req.Request, headers http.Header) {
-	for key, values := range headers {
+	for key, values := range resp.Header {
 		for _, value := range values {
-			req.SetHeader(key, value)
+			c.Writer.Header().Add(key, value)
 		}
+	}
+
+	c.Writer.WriteHeader(resp.StatusCode)
+
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		log.Printf("Copying response body failed: %v", err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
 	}
 }
 
-func copyHeadersToContext(c *gin.Context, headers http.Header) {
-	for key, values := range headers {
-		for _, value := range values {
-			c.Header(key, value)
-		}
-	}
-}
+func ModifyResponse(resp *http.Response) error {
+	resp.Header.Set("access-control-allow-origin", "*")
+	resp.Header.Set("access-control-allow-methods", "GET,POST,PUT,PATCH,TRACE,DELETE,HEAD,OPTIONS")
 
-func logAndRespond(c *gin.Context, status int, message string, err error) {
-	log.Printf("%s: %v", message, err)
-	c.String(status, fmt.Sprintf("server error: %v", err))
+	return nil
 }
