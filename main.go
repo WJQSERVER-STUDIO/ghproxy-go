@@ -81,16 +81,24 @@ func authHandler(c *gin.Context) bool {
 func noRouteHandler(config *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rawPath := strings.TrimPrefix(c.Request.URL.RequestURI(), "/")
-		if matches := checkURL(rawPath); matches != nil {
-			rawPath = "https://" + matches[2]
-			if exps[1].MatchString(rawPath) {
-				rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
-			}
-			log.Printf("Request: %s %s", c.Request.Method, rawPath)
-			proxyRequest(c, rawPath, config)
-		} else {
+		matches := checkURL(rawPath)
+		if matches == nil || len(matches) < 3 {
 			c.String(http.StatusForbidden, "Invalid input.")
+			return
 		}
+
+		rawPath = "https://" + matches[2]
+		if exps[1].MatchString(rawPath) {
+			rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
+		}
+
+		if !authHandler(c) {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		log.Printf("Request: %s %s", c.Request.Method, rawPath)
+		proxyRequest(c, rawPath, config)
 	}
 }
 
@@ -112,18 +120,10 @@ func proxyRequest(c *gin.Context, rawPath string, config *config.Config) {
 }
 
 func proxyGit(c *gin.Context, u string, config *config.Config) {
-	if !authHandler(c) {
-		c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
-		return
-	}
 	proxyWithClient(c, u, config, "git/2.33.1")
 }
 
 func proxyChrome(c *gin.Context, u string, config *config.Config) {
-	if !authHandler(c) {
-		c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
-		return
-	}
 	proxyWithClient(c, u, config, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
 }
 
