@@ -45,10 +45,6 @@ func init() {
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
-	if cfg.Auth {
-		router.Use(authMiddleware(cfg.AuthToken))
-	}
-
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "https://ghproxy0rtt.1888866.xyz/")
 	})
@@ -74,15 +70,12 @@ func main() {
 	}
 }
 
-func authMiddleware(authToken string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := c.Query("auth_token")
-		if token != authToken {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-		c.Next()
+func authHandler(c *gin.Context) bool {
+	if cfg.Auth {
+		authToken := c.Query("auth_token")
+		return authToken == cfg.AuthToken
 	}
+	return true
 }
 
 func noRouteHandler(config *config.Config) gin.HandlerFunc {
@@ -119,10 +112,18 @@ func proxyRequest(c *gin.Context, rawPath string, config *config.Config) {
 }
 
 func proxyGit(c *gin.Context, u string, config *config.Config) {
+	if !authHandler(c) {
+		c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
 	proxyWithClient(c, u, config, "git/2.33.1")
 }
 
 func proxyChrome(c *gin.Context, u string, config *config.Config) {
+	if !authHandler(c) {
+		c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
 	proxyWithClient(c, u, config, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
 }
 
