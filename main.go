@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"ghproxy/config"
+	"GithubProxy/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
