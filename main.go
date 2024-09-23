@@ -42,7 +42,6 @@ func init() {
 
 	// 初始化路由
 	router = gin.Default()
-	//router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// 定义路由
 	router.GET("/", func(c *gin.Context) {
