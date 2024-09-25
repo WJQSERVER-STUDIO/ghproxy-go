@@ -1,5 +1,7 @@
 # ghProxy-Go
 
+## [WJQSERVER-STUDIO/ghproxy](https://github。com/WJQSERVER-STUDIO/ghproxy)做出了更佳实现,本仓库将存档
+
 ## 简介
 GitHub 代理服务，支持 Github release、archive以及项目文件
 
